@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PharmaSuite Pro</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.25.6/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.4.2/3Dmol-min.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #161b22; color: #e6edf3; font-family: "Segoe UI", Tahoma, sans-serif; font-size: 14px; }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 14px 22px; background: #0d1117; border-bottom: 1px solid #2d3748; }
+  h1 { margin: 0; font-size: 20px; color: #3fb6a8; }
+  nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 22px; background: #1f2630; }
+  main { padding: 18px 22px; max-width: 1200px; margin: 0 auto; }
+  button { background: #3fb6a8; color: #0d1117; border: none; border-radius: 6px; padding: 8px 16px; font-weight: bold; cursor: pointer; font-family: inherit; }
+  button:hover { background: #5cc9bc; }
+  button.ghost { background: #2d3748; color: #e6edf3; }
+  button.ghost:hover { background: #3a4659; }
+  button.tab { background: transparent; color: #8b949e; border-radius: 6px 6px 0 0; }
+  button.tab.active { background: #3fb6a8; color: #0d1117; }
+  input, select { background: #0d1117; color: #e6edf3; border: 1px solid #2d3748; border-radius: 6px; padding: 8px; font-family: inherit; }
+  input:focus, select:focus { outline: none; border-color: #3fb6a8; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .row input { flex: 1; min-width: 200px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { background: #1f2630; border: 1px solid #2d3748; border-radius: 10px; padding: 14px; }
+  .muted { color: #8b949e; }
+  .err { color: #ff7b72; }
+  .ok { color: #3fb6a8; }
+  pre { white-space: pre-wrap; background: #0d1117; border: 1px solid #2d3748; border-radius: 8px; padding: 10px; font-family: Consolas, monospace; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px; border-bottom: 1px solid #2d3748; }
+  td:first-child { color: #8b949e; width: 45%; }
+  .svgbox { background: #ffffff; border-radius: 8px; display: flex; justify-content: center; padding: 8px; }
+  .periodic { display: grid; gap: 3px; grid-template-columns: repeat(18, 44px); overflow-x: auto; }
+  .el { height: 42px; width: 44px; border: 1px solid #0d1117; border-radius: 5px; color: #fff; font-weight: bold; cursor: pointer; padding: 0; }
+  .el.sel { border: 3px solid #fff; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 12px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: 4px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const CAT_COLORS = {
+  noble: "#8e44ad", halogen: "#d35400", nonmetal: "#16a085", metalloid: "#2980b9",
+  alkali: "#c0392b", alkaline: "#e67e22", lanthanide: "#b7950b", actinide: "#7d6608",
+  transition: "#2c3e50", post: "#5d6d7e",
+};
+
+const T = {
+  ar: {
+    tabs: { compound: "تحليل المركب", elements: "الجدول الدوري", tools: "الأدوات", formulation: "التركيبات", substructure: "البحث الجزئي", favorites: "المفضلة", quizzes: "الاختبارات", assistant: "المساعد الذكي" },
+    smiles: "صيغة SMILES", analyze: "حلّل", loading: "جاري التحميل...", error: "خطأ",
+    props: { formula: "الصيغة الجزيئية", mw: "الوزن الجزيئي", logp: "LogP", rot: "الروابط الدوارة",
+      hbd: "متبرعات الهيدروجين", hba: "مستقبلات الهيدروجين", viol: "مخالفات ليبينسكي", pass: "يجتاز قاعدة الخمسة",
+      canon: "الصيغة القياسية", yes: "نعم", no: "لا" },
+    view3d: "اسحب بالماوس لتدوير الجزيء", no3d: "تعذر بناء الهيكل ثلاثي الأبعاد",
+    cat: { alkali: "قلويات", alkaline: "قلويات أرضية", transition: "انتقالية", post: "ما بعد الانتقالية",
+      metalloid: "أشباه فلزات", nonmetal: "لافلزات", halogen: "هالوجينات", noble: "غازات نبيلة",
+      lanthanide: "اللانثانيدات", actinide: "الأكتينيدات" },
+    el: { z: "الرقم الذري", weight: "الوزن الذري", valence: "التكافؤ", outer: "إلكترونات التكافؤ",
+      period: "الدورة", category: "التصنيف", shells: "توزيع الإلكترونات" },
+    bal: { title: "موازن المعادلات", eq: "المعادلة (متفاعلات -> نواتج)", btn: "وازن", result: "المعادلة الموزونة" },
+    kin: { title: "الحركية", order: "الرتبة", o0: "صفرية", o1: "أولى", o2: "ثانية", a0: "[A0]", k: "k", t: "الزمن t",
+      hl: "عمر النصف", conc: "التركيز المتبقي", btn: "احسب" },
+    shelf: { title: "الصلاحية (Arrhenius)", kref: "k عند المرجع", tref: "حرارة المرجع (°C)", ea: "Ea (kJ/mol)",
+      tst: "حرارة التخزين (°C)", kst: "k عند التخزين", t90: "t90 (وقت بقاء 90%)", thalf: "عمر النصف",
+      note: "يفترض تحلل من الدرجة الأولى. راجع إرشادات ICH قبل أي استخدام تنظيمي.", btn: "احسب" },
+    form: { api: "المادة الفعالة", apipct: "نسبة المادة الفعالة %", add: "أضف مادة مساعدة", check: "افحص التركيبة",
+      total: "المجموع", ok: "المجموع 100%", bad: "المجموع لازم يساوي 100%", typical: "المعتاد",
+      low: "أقل من المدى", high: "أعلى من المدى", inr: "ضمن المدى", none: "لا توجد تنبيهات تداخل حسب القواعد.",
+      sev_high: "عالي", sev_medium: "متوسط", rm: "حذف" },
+    sub: { label: "الجزء المطلوب (SMARTS أو SMILES)", btn: "ابحث", none: "لا توجد مركبات بهذا الجزء في المكتبة.",
+      found: "عدد المركبات:", hint: "مثال: c1ccccc1 أو C(=O)O" },
+    ex: { lactose: "اللاكتوز", mcc: "السيليلوز الميكروكريستالي", sorbitol: "السوربيتول", starch: "النشا",
+      sodium_starch_glycolate: "صوديوم نشا جلايكولات", povidone: "البوفيدون (PVP)", hpmc: "HPMC",
+      mg_stearate: "ستيارات المغنيسيوم", talc: "التالك", silica: "ثاني أكسيد السيليكون", citric_acid: "حمض الستريك",
+      sodium_benzoate: "بنزوات الصوديوم" },
+    rules: { rule_maillard: "اللاكتوز ممكن يتفاعل مع الأمينات الأولية (مايلارد). فكّر في بديل.",
+      rule_ester_alkaline: "ستيارات المعادن ممكن تسرّع تحلل أدوية الإستر مع الرطوبة. اعمل اختبار ثبات.",
+      advice_ester: "دواء إستر: احمه من الرطوبة.", advice_amine: "أمين أولي: تحقق من التوافق مع اللاكتوز.",
+      advice_oxidizable: "سهل الأكسدة: احمه من الضوء والأكسجين." },
+  },
+  en: {
+    tabs: { compound: "Compound", elements: "Periodic Table", tools: "Tools", formulation: "Formulation", substructure: "Substructure", favorites: "Favorites", quizzes: "Quizzes", assistant: "AI Assistant" },
+    smiles: "SMILES", analyze: "Analyze", loading: "Loading...", error: "Error",
+    props: { formula: "Formula", mw: "Molecular weight", logp: "LogP", rot: "Rotatable bonds",
+      hbd: "H-bond donors", hba: "H-bond acceptors", viol: "Lipinski violations", pass: "Passes Rule of 5",
+      canon: "Canonical SMILES", yes: "Yes", no: "No" },
+    view3d: "Drag to rotate the molecule", no3d: "Could not build a 3D structure",
+    cat: { alkali: "Alkali metal", alkaline: "Alkaline earth", transition: "Transition metal", post: "Post-transition",
+      metalloid: "Metalloid", nonmetal: "Nonmetal", halogen: "Halogen", noble: "Noble gas",
+      lanthanide: "Lanthanide", actinide: "Actinide" },
+    el: { z: "Atomic number", weight: "Atomic weight", valence: "Default valence", outer: "Outer electrons",
+      period: "Period", category: "Category", shells: "Electron shells" },
+    bal: { title: "Equation Balancer", eq: "Equation (reactants -> products)", btn: "Balance", result: "Balanced equation" },
+    kin: { title: "Kinetics", order: "Order", o0: "Zero", o1: "First", o2: "Second", a0: "[A0]", k: "k", t: "Time t",
+      hl: "Half-life", conc: "Concentration remaining", btn: "Calculate" },
+    shelf: { title: "Shelf life (Arrhenius)", kref: "k at reference", tref: "Reference temp (°C)", ea: "Ea (kJ/mol)",
+      tst: "Storage temp (°C)", kst: "k at storage", t90: "t90 (time to 90%)", thalf: "Half-life",
+      note: "Assumes first-order degradation. Check ICH guidelines before regulatory use.", btn: "Calculate" },
+    form: { api: "Active ingredient", apipct: "API %", add: "Add excipient", check: "Check formulation",
+      total: "Total", ok: "Sums to 100%", bad: "Should sum to 100%", typical: "typical",
+      low: "below range", high: "above range", inr: "in range", none: "No incompatibility alerts by the rules.",
+      sev_high: "High", sev_medium: "Medium", rm: "Remove" },
+    sub: { label: "Fragment (SMARTS or SMILES)", btn: "Search", none: "No compounds with this fragment in the library.",
+      found: "Compounds found:", hint: "e.g. c1ccccc1 or C(=O)O" },
+    ex: { lactose: "Lactose", mcc: "Microcrystalline cellulose", sorbitol: "Sorbitol", starch: "Starch",
+      sodium_starch_glycolate: "Sodium starch glycolate", povidone: "Povidone (PVP)", hpmc: "HPMC",
+      mg_stearate: "Magnesium stearate", talc: "Talc", silica: "Colloidal silicon dioxide", citric_acid: "Citric acid",
+      sodium_benzoate: "Sodium benzoate" },
+    rules: { rule_maillard: "Lactose can react with primary amines (Maillard). Consider another diluent.",
+      rule_ester_alkaline: "Metal stearates can promote hydrolysis of ester drugs with moisture. Run a stability test.",
+      advice_ester: "Ester drug: protect from moisture.", advice_amine: "Primary amine: check compatibility with lactose.",
+      advice_oxidizable: "Easily oxidized: protect from light and oxygen." },
+  },
+};
+
+async function api(path, body, method) {
+  const token = localStorage.getItem("ps_token");
+  const headers = {};
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const opts = { headers };
+  if (body !== null && body !== undefined) {
+    opts.method = "POST";
+    headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  if (method) opts.method = method;
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : "request failed");
+  return data;
+}
+
+function ErrorBox({ msg }) {
+  return msg ? <p className="err">{msg}</p> : null;
+}
+
+function Viewer3D({ molblock, hint, empty }) {
+  const ref = useRef(null);
+  const viewer = useRef(null);
+  useEffect(() => {
+    viewer.current = $3Dmol.createViewer(ref.current, { backgroundColor: "#0d1117" });
+    return () => { if (viewer.current) viewer.current.clear(); };
+  }, []);
+  useEffect(() => {
+    const v = viewer.current;
+    if (!v) return;
+    v.clear();
+    if (molblock) {
+      v.addModel(molblock, "mol");
+      v.setStyle({}, { stick: { radius: 0.15 }, sphere: { scale: 0.25 } });
+      v.zoomTo();
+    }
+    v.render();
+  }, [molblock]);
+  return (
+    <div>
+      <div ref={ref} style={{ width: "100%", height: 360, position: "relative" }} />
+      <p className="muted">{molblock ? hint : empty}</p>
+    </div>
+  );
+}
+
+function CompoundPanel({ t }) {
+  const [smiles, setSmiles] = useState("CC(=O)Oc1ccccc1C(=O)O");
+  const [props, setProps] = useState(null);
+  const [svg, setSvg] = useState("");
+  const [molblock, setMolblock] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function run() {
+    setErr(""); setBusy(true);
+    try {
+      const [p, s] = await Promise.all([
+        api("/api/v1/compounds/properties", { smiles }),
+        api("/api/v1/compounds/svg", { smiles }),
+      ]);
+      setProps(p); setSvg(s.svg);
+      try {
+        const m = await api("/api/v1/compounds/3d", { smiles });
+        setMolblock(m.molblock);
+      } catch (e) {
+        setMolblock(""); setErr(t("no3d"));
+      }
+    } catch (e) {
+      setProps(null); setSvg(""); setMolblock("");
+      setErr(e.message);
+    } finally { setBusy(false); }
+  }
+
+  useEffect(() => { run(); }, []);
+
+  const P = t === null ? null : null;
+  return (
+    <div>
+      <div className="row">
+        <input value={smiles} onChange={(e) => setSmiles(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()}
+          placeholder={"SMILES"} />
+        <button onClick={run} disabled={busy}>{busy ? "..." : "Analyze"}</button>
+      </div>
+      <ErrorBox msg={err} />
+      {props && (
+        <div className="grid2">
+          <div>
+            <div className="svgbox" dangerouslySetInnerHTML={{ __html: svg }} />
+            <div className="card" style={{ marginTop: 12 }}>
+              <table><tbody>
+                <tr><td>{props && t("p_formula")}</td><td>{props.formula}</td></tr>
+                <tr><td>{t("p_mw")}</td><td>{props.molecular_weight}</td></tr>
+                <tr><td>{t("p_logp")}</td><td>{props.log_p}</td></tr>
+                <tr><td>{t("p_rot")}</td><td>{props.rotatable_bonds}</td></tr>
+                <tr><td>{t("p_hbd")}</td><td>{props.h_bond_donors}</td></tr>
+                <tr><td>{t("p_hba")}</td><td>{props.h_bond_acceptors}</td></tr>
+                <tr><td>{t("p_viol")}</td><td>{props.lipinski_violations}</td></tr>
+                <tr><td>{t("p_pass")}</td><td>{props.passes_lipinski ? t("yes") : t("no")}</td></tr>
+                <tr><td>{t("p_canon")}</td><td>{props.canonical_smiles}</td></tr>
+              </tbody></table>
+            </div>
+          </div>
+          <div className="card">
+            <Viewer3D molblock={molblock} hint={t("view3d")} empty={t("no3d")} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ElementsPanel({ t }) {
+  const [els, setEls] = useState([]);
+  const [sel, setSel] = useState(6);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    api("/api/v1/elements").then(setEls).catch((e) => setErr(e.message));
+  }, []);
+  const cur = els.find((e) => e.z === sel);
+  const legend = Object.keys(CAT_COLORS);
+  return (
+    <div>
+      <ErrorBox msg={err} />
+      <div className="grid2">
+        <div>
+          <div className="periodic">
+            {els.map((e) => (
+              <button key={e.z} className={"el" + (e.z === sel ? " sel" : "")}
+                style={{ gridRow: e.row, gridColumn: e.col, background: CAT_COLORS[e.category] }}
+                onClick={() => setSel(e.z)}>{e.symbol}</button>
+            ))}
+          </div>
+          <div className="legend">
+            {legend.map((k) => (
+              <span key={k}><span className="dot" style={{ background: CAT_COLORS[k] }} />{t("cat")[k]}</span>
+            ))}
+          </div>
+        </div>
+        {cur && (
+          <div className="card">
+            <h2 style={{ color: "#3fb6a8", margin: "0 0 10px", fontSize: 36 }}>{cur.symbol}</h2>
+            <table><tbody>
+              <tr><td>{t("el").z}</td><td>{cur.z}</td></tr>
+              <tr><td>{t("el").weight}</td><td>{cur.weight}</td></tr>
+              <tr><td>{t("el").valence}</td><td>{cur.valence}</td></tr>
+              <tr><td>{t("el").outer}</td><td>{cur.outer}</td></tr>
+              <tr><td>{t("el").period}</td><td>{cur.period}</td></tr>
+              <tr><td>{t("el").category}</td><td>{t("cat")[cur.category]}</td></tr>
+              <tr><td>{t("el").shells}</td><td>{cur.shells.join(" - ")}</td></tr>
+            </tbody></table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ToolsPanel({ t }) {
+  const [tool, setTool] = useState("bal");
+  const [eq, setEq] = useState("C6H12O6 + O2 -> CO2 + H2O");
+  const [order, setOrder] = useState(1);
+  const [a0, setA0] = useState(1.0), [k, setK] = useState(0.1), [tt, setTt] = useState(1.0);
+  const [kref, setKref] = useState(0.01), [tref, setTref] = useState(25), [ea, setEa] = useState(50), [tst, setTst] = useState(30);
+  const [out, setOut] = useState(""); const [err, setErr] = useState("");
+
+  async function run() {
+    setErr(""); setOut("");
+    try {
+      if (tool === "bal") {
+        const r = await api("/api/v1/equations/balance", { equation: eq });
+        setOut(`${t("bal").result}:\n${r.balanced}`);
+      } else if (tool === "kin") {
+        const r = await api("/api/v1/kinetics/rate", { order: Number(order), a0: +a0, k: +k, t: +tt });
+        setOut(`${t("kin").hl}: ${r.half_life.toPrecision(4)}\n${t("kin").conc} (t=${tt}): ${r.concentration.toPrecision(4)}`);
+      } else {
+        const r = await api("/api/v1/stability/shelf-life", { k_ref: +kref, t_ref_c: +tref, ea_kj: +ea, t_storage_c: +tst });
+        setOut(`${t("shelf").kst}: ${r.k_storage.toPrecision(4)}\n${t("shelf").t90}: ${r.t90.toPrecision(4)}\n${t("shelf").thalf}: ${r.t_half.toPrecision(4)}\n\n${t("shelf").note}`);
+      }
+    } catch (e) { setErr(e.message); }
+  }
+
+  const num = (v, set, step = "any") => <input type="number" step={step} value={v} onChange={(e) => set(e.target.value)} />;
+  return (
+    <div>
+      <div className="row">
+        {["bal", "kin", "shelf"].map((k2) => (
+          <button key={k2} className={"tab" + (tool === k2 ? " active" : "")} onClick={() => { setTool(k2); setOut(""); setErr(""); }}>
+            {k2 === "bal" ? t("bal").title : k2 === "kin" ? t("kin").title : t("shelf").title}
+          </button>
+        ))}
+      </div>
+      <div className="card">
+        {tool === "bal" && (
+          <div className="row">
+            <input value={eq} onChange={(e) => setEq(e.target.value)} placeholder={t("bal").eq} />
+            <button onClick={run}>{t("bal").btn}</button>
+          </div>
+        )}
+        {tool === "kin" && (
+          <div className="row">
+            <select value={order} onChange={(e) => setOrder(e.target.value)}>
+              <option value={0}>{t("kin").o0}</option><option value={1}>{t("kin").o1}</option><option value={2}>{t("kin").o2}</option>
+            </select>
+            {num(a0, setA0)}{num(k, setK)}{num(tt, setTt)}
+            <button onClick={run}>{t("kin").btn}</button>
+          </div>
+        )}
+        {tool === "shelf" && (
+          <div className="row">
+            {num(kref, setKref)}{num(tref, setTref)}{num(ea, setEa)}{num(tst, setTst)}
+            <button onClick={run}>{t("shelf").btn}</button>
+          </div>
+        )}
+        <ErrorBox msg={err} />
+        {out && <pre>{out}</pre>}
+      </div>
+    </div>
+  );
+}
+
+function FormulationPanel({ t }) {
+  const [drugs, setDrugs] = useState([]);
+  const [excList, setExcList] = useState([]);
+  const [api_, setApi] = useState("aspirin");
+  const [apiPct, setApiPct] = useState(10);
+  const [rows, setRows] = useState([{ key: "lactose", pct: 60 }, { key: "mg_stearate", pct: 1 }]);
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api("/api/v1/drugs").then(setDrugs).catch((e) => setErr(e.message));
+    api("/api/v1/formulation/excipients").then(setExcList).catch(() => {});
+  }, []);
+
+  async function check() {
+    setErr("");
+    try {
+      setRes(await api("/api/v1/formulation/check", {
+        api: api_, api_pct: +apiPct, excipients: rows.map((r) => ({ key: r.key, pct: +r.pct })),
+      }));
+    } catch (e) { setErr(e.message); setRes(null); }
+  }
+
+  const lang = document.documentElement.lang === "ar" ? "ar" : "en";
+  return (
+    <div className="card">
+      <ErrorBox msg={err} />
+      <div className="row">
+        <label>{t("form").api}:</label>
+        <select value={api_} onChange={(e) => setApi(e.target.value)}>
+          {drugs.map((d) => <option key={d.key} value={d.key}>{lang === "ar" ? d.ar : d.en}</option>)}
+        </select>
+        <label>{t("form").apipct}:</label>
+        <input type="number" value={apiPct} onChange={(e) => setApiPct(e.target.value)} style={{ maxWidth: 110 }} />
+      </div>
+      {rows.map((r, i) => (
+        <div className="row" key={i}>
+          <select value={r.key} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, key: e.target.value } : x))}>
+            {excList.map((x) => <option key={x.key} value={x.key}>{t("ex")[x.key] || x.key}</option>)}
+          </select>
+          <input type="number" value={r.pct} style={{ maxWidth: 110 }}
+            onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, pct: e.target.value } : x))} />
+          <button className="ghost" onClick={() => setRows(rows.filter((_, j) => j !== i))}>{t("form").rm}</button>
+        </div>
+      ))}
+      <div className="row">
+        <button className="ghost" onClick={() => setRows([...rows, { key: "starch", pct: 5 }])}>{t("form").add}</button>
+        <button onClick={check}>{t("form").check}</button>
+      </div>
+      {res && (
+        <pre>
+{`${t("form").total}: ${res.total.toFixed(2)}%  —  ${res.total_ok ? t("form").ok : t("form").bad}
+
+${res.ranges.map(([k, pct, lo, hi, st]) =>
+  `${st === "ok" ? "✔" : "⚠"} ${t("ex")[k] || k}: ${pct}%  (${t("form").typical} ${lo}–${hi}%)  ${st === "ok" ? t("form").inr : st === "low" ? t("form").low : t("form").high}`
+).join("\n")}
+
+${res.alerts.length ? res.alerts.map(([sev, code, exc]) =>
+  `✖ [${sev === "high" ? t("form").sev_high : t("form").sev_medium}] ${t("rules")[code]} — ${t("ex")[exc]}`).join("\n")
+  : "✔ " + t("form").none}
+
+${res.advice.map((a) => "ℹ " + t("rules")[a]).join("\n")}`}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function SubstructurePanel({ t }) {
+  const [frag, setFrag] = useState("C(=O)O");
+  const [matches, setMatches] = useState(null);
+  const [err, setErr] = useState("");
+  async function run() {
+    setErr("");
+    try {
+      const r = await api("/api/v1/substructure", { fragment: frag });
+      setMatches(r.matches);
+    } catch (e) { setErr(e.message); setMatches(null); }
+  }
+  return (
+    <div className="card">
+      <div className="row">
+        <input value={frag} onChange={(e) => setFrag(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()}
+          placeholder={t("sub").hint} />
+        <button onClick={run}>{t("sub").btn}</button>
+      </div>
+      <ErrorBox msg={err} />
+      {matches && matches.length === 0 && <p className="muted">{t("sub").none}</p>}
+      {matches && matches.length > 0 && (
+        <div>
+          <p>{t("sub").found} {matches.length}</p>
+          <table><tbody>
+            {matches.map((m) => (<tr key={m.key}><td>{m.name}</td><td>{m.smiles}</td></tr>))}
+          </tbody></table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MainApp({ user, onLogout, lang, setLang }) {
+  const [tab, setTab] = useState("compound");
+
+  const L = T[lang];
+  const t = (key) => L[key] !== undefined ? L[key] : key;
+  const tt = {
+    tabs: L.tabs, p_formula: L.props.formula, p_mw: L.props.mw, p_logp: L.props.logp, p_rot: L.props.rot,
+    p_hbd: L.props.hbd, p_hba: L.props.hba, p_viol: L.props.viol, p_pass: L.props.pass, p_canon: L.props.canon,
+    yes: L.props.yes, no: L.props.no, view3d: L.view3d, no3d: L.no3d, cat: L.cat, el: L.el, bal: L.bal,
+    kin: L.kin, shelf: L.shelf, form: L.form, sub: L.sub, ex: L.ex, rules: L.rules, loading: L.loading,
+  };
+  const tr = (k) => tt[k];
+  const tabList = ["compound", "elements", "tools", "formulation", "substructure", "favorites", "quizzes", "assistant"];
+
+  return (
+    <div>
+      <header>
+        <h1>PharmaSuite Pro</h1>
+        <span className="muted">{user.username} · {user.role === "instructor" ? TA[lang].instructor : TA[lang].student}</span>
+        <button className="ghost" onClick={onLogout}>{TA[lang].logout}</button>
+        <button className="ghost" onClick={() => setLang(lang === "ar" ? "en" : "ar")}>
+          {lang === "ar" ? "English" : "العربية"}
+        </button>
+      </header>
+      <nav>
+        {tabList.map((k) => (
+          <button key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{L.tabs[k]}</button>
+        ))}
+      </nav>
+      <main>
+        {tab === "compound" && <CompoundPanel t={(k) => ({ no3d: L.no3d, view3d: L.view3d, p_formula: L.props.formula, p_mw: L.props.mw, p_logp: L.props.logp, p_rot: L.props.rot, p_hbd: L.props.hbd, p_hba: L.props.hba, p_viol: L.props.viol, p_pass: L.props.pass, p_canon: L.props.canon, yes: L.props.yes, no: L.props.no })[k]} />}
+        {tab === "elements" && <ElementsPanel t={(k) => k === "cat" ? L.cat : k === "el" ? L.el : k} />}
+        {tab === "tools" && <ToolsPanel t={(k) => ({ bal: L.bal, kin: L.kin, shelf: L.shelf })[k]} />}
+        {tab === "formulation" && <FormulationPanel t={(k) => ({ form: L.form, ex: L.ex, rules: L.rules })[k]} />}
+        {tab === "substructure" && <SubstructurePanel t={(k) => ({ sub: L.sub, hint: L.sub.hint })[k] || L.sub} />}
+        {tab === "favorites" && <FavoritesPanel lang={lang} />}
+        {tab === "quizzes" && <QuizPanel lang={lang} user={user} />}
+        {tab === "assistant" && <AssistantPanel lang={lang} />}
+      </main>
+    </div>
+  );
+}
+
+const TA = {
+  ar: {
+    login: "تسجيل الدخول", register: "إنشاء حساب", username: "اسم المستخدم", password: "كلمة السر",
+    student: "طالب", instructor: "أستاذ", invite: "كود الأستاذ", to_register: "ليس لديك حساب؟ سجّل",
+    to_login: "عندك حساب؟ سجّل دخول", logout: "خروج",
+    fav_name: "الاسم", fav_smiles: "صيغة SMILES", fav_add: "أضف", fav_empty: "مفيش مفضلة لسه.", delete: "حذف",
+    create_quiz: "إنشاء اختبار جديد", quiz_title: "عنوان الاختبار", question_text: "نص السؤال",
+    choices_hint: "الاختيارات مفصولة بفاصلة", answer_index: "رقم الإجابة الصحيحة (يبدأ من 1)",
+    add_question: "أضف السؤال", draft_count: "أسئلة في الاختبار", save_quiz: "احفظ الاختبار",
+    q_invalid: "اكتب السؤال و2 اختيارات على الأقل ورقم إجابة صحيح.", no_quizzes: "مفيش اختبارات لسه.",
+    open: "افتح", results: "النتائج", no_attempts: "لسه محدش حل الاختبار.", submit: "سلّم", score: "درجتك",
+  },
+  en: {
+    login: "Log in", register: "Create account", username: "Username", password: "Password",
+    student: "Student", instructor: "Instructor", invite: "Instructor code", to_register: "No account? Register",
+    to_login: "Have an account? Log in", logout: "Log out",
+    fav_name: "Name", fav_smiles: "SMILES", fav_add: "Add", fav_empty: "No favorites yet.", delete: "Delete",
+    create_quiz: "Create a new quiz", quiz_title: "Quiz title", question_text: "Question",
+    choices_hint: "Choices separated by commas", answer_index: "Correct answer number (starts at 1)",
+    add_question: "Add question", draft_count: "questions in this quiz", save_quiz: "Save quiz",
+    q_invalid: "Write the question, at least 2 choices, and a valid answer number.", no_quizzes: "No quizzes yet.",
+    open: "Open", results: "Results", no_attempts: "Nobody has taken this quiz yet.", submit: "Submit", score: "Your score",
+  },
+};
+
+function AuthPanel({ lang, onAuth }) {
+  const L = TA[lang];
+  const [mode, setMode] = useState("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("student");
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+
+  async function submit(ev) {
+    ev.preventDefault();
+    setErr("");
+    try {
+      const path = mode === "login" ? "/api/v1/auth/login" : "/api/v1/auth/register";
+      const body = mode === "login"
+        ? { username, password }
+        : { username, password, role, invite_code: code || null };
+      const r = await api(path, body);
+      localStorage.setItem("ps_token", r.token);
+      onAuth(r.user);
+    } catch (e2) {
+      setErr(e2.message);
+    }
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 420, margin: "30px auto" }}>
+      <h2>{mode === "login" ? L.login : L.register}</h2>
+      <form onSubmit={submit}>
+        <div className="row"><input placeholder={L.username} value={username} onChange={(e) => setUsername(e.target.value)} /></div>
+        <div className="row"><input type="password" placeholder={L.password} value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+        {mode === "register" && (
+          <>
+            <div className="row">
+              <select value={role} onChange={(e) => setRole(e.target.value)}>
+                <option value="student">{L.student}</option>
+                <option value="instructor">{L.instructor}</option>
+              </select>
+            </div>
+            {role === "instructor" && (
+              <div className="row"><input placeholder={L.invite} value={code} onChange={(e) => setCode(e.target.value)} /></div>
+            )}
+          </>
+        )}
+        <ErrorBox msg={err} />
+        <div className="row">
+          <button type="submit">{mode === "login" ? L.login : L.register}</button>
+          <button type="button" className="ghost" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+            {mode === "login" ? L.to_register : L.to_login}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function FavoritesPanel({ lang }) {
+  const L = TA[lang];
+  const [items, setItems] = useState([]);
+  const [name, setName] = useState("");
+  const [smiles, setSmiles] = useState("");
+  const [err, setErr] = useState("");
+
+  const load = () => api("/api/v1/favorites").then(setItems).catch((e) => setErr(e.message));
+  useEffect(() => { load(); }, []);
+
+  async function add() {
+    setErr("");
+    try {
+      await api("/api/v1/favorites", { name: name || smiles, smiles });
+      setName(""); setSmiles("");
+      load();
+    } catch (e2) { setErr(e2.message); }
+  }
+  async function remove(id) {
+    await api(`/api/v1/favorites/${id}`, null, "DELETE");
+    load();
+  }
+
+  return (
+    <div className="card">
+      <div className="row">
+        <input placeholder={L.fav_name} value={name} onChange={(e) => setName(e.target.value)} />
+        <input placeholder={L.fav_smiles} value={smiles} onChange={(e) => setSmiles(e.target.value)} />
+        <button onClick={add}>{L.fav_add}</button>
+      </div>
+      <ErrorBox msg={err} />
+      {items.length === 0 && <p className="muted">{L.fav_empty}</p>}
+      <table><tbody>
+        {items.map((f) => (
+          <tr key={f.id}>
+            <td>{f.name}</td><td>{f.smiles}</td>
+            <td><button className="ghost" onClick={() => remove(f.id)}>{L.delete}</button></td>
+          </tr>
+        ))}
+      </tbody></table>
+    </div>
+  );
+}
+
+function QuizPanel({ lang, user }) {
+  const L = TA[lang];
+  const isInstructor = user.role === "instructor";
+  const [quizzes, setQuizzes] = useState([]);
+  const [err, setErr] = useState("");
+  const [current, setCurrent] = useState(null);
+  const [answers, setAnswers] = useState([]);
+  const [result, setResult] = useState(null);
+  const [results, setResults] = useState(null);
+  const [title, setTitle] = useState("");
+  const [qText, setQText] = useState("");
+  const [choices, setChoices] = useState("");
+  const [correct, setCorrect] = useState(1);
+  const [draft, setDraft] = useState([]);
+
+  const loadList = () => api("/api/v1/quizzes").then(setQuizzes).catch((e) => setErr(e.message));
+  useEffect(() => { loadList(); }, []);
+
+  async function open(id) {
+    setErr(""); setResult(null); setResults(null);
+    try {
+      const q = await api(`/api/v1/quizzes/${id}`);
+      setCurrent(q);
+      setAnswers(q.questions.map(() => 0));
+    } catch (e2) { setErr(e2.message); }
+  }
+
+  async function submit() {
+    try {
+      setResult(await api(`/api/v1/quizzes/${current.id}/submit`, { answers }));
+    } catch (e2) { setErr(e2.message); }
+  }
+
+  function addQuestion() {
+    const list = choices.split(/[,،]/).map((x) => x.trim()).filter(Boolean);
+    if (!qText.trim() || list.length < 2 || correct < 1 || correct > list.length) {
+      setErr(L.q_invalid);
+      return;
+    }
+    setErr("");
+    setDraft([...draft, { text: qText.trim(), choices: list, answer: correct - 1 }]);
+    setQText(""); setChoices(""); setCorrect(1);
+  }
+
+  async function saveQuiz() {
+    setErr("");
+    try {
+      await api("/api/v1/quizzes", { title, questions: draft });
+      setDraft([]); setTitle("");
+      loadList();
+    } catch (e2) { setErr(e2.message); }
+  }
+
+  async function showResults(id) {
+    try { setResults(await api(`/api/v1/quizzes/${id}/results`)); }
+    catch (e2) { setErr(e2.message); }
+  }
+
+  return (
+    <div>
+      <ErrorBox msg={err} />
+      {isInstructor && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <h3>{L.create_quiz}</h3>
+          <div className="row"><input placeholder={L.quiz_title} value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+          <div className="row"><input placeholder={L.question_text} value={qText} onChange={(e) => setQText(e.target.value)} /></div>
+          <div className="row">
+            <input placeholder={L.choices_hint} value={choices} onChange={(e) => setChoices(e.target.value)} />
+            <input type="number" min="1" value={correct} title={L.answer_index}
+              onChange={(e) => setCorrect(Number(e.target.value))} style={{ maxWidth: 120 }} />
+            <button className="ghost" onClick={addQuestion}>{L.add_question}</button>
+          </div>
+          {draft.length > 0 && <p className="muted">{draft.length} {L.draft_count}</p>}
+          <div className="row">
+            <button onClick={saveQuiz} disabled={!title || draft.length === 0}>{L.save_quiz}</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        {quizzes.length === 0 && <p className="muted">{L.no_quizzes}</p>}
+        {quizzes.map((qz) => (
+          <div className="row" key={qz.id}>
+            <span style={{ flex: 1 }}>{qz.title} ({qz.count})</span>
+            <button className="ghost" onClick={() => open(qz.id)}>{L.open}</button>
+            {isInstructor && <button className="ghost" onClick={() => showResults(qz.id)}>{L.results}</button>}
+          </div>
+        ))}
+      </div>
+
+      {results && (
+        <div className="card" style={{ marginTop: 14 }}>
+          <h3>{L.results}</h3>
+          {results.length === 0 && <p className="muted">{L.no_attempts}</p>}
+          {results.length > 0 && (
+            <table><tbody>
+              {results.map((r, i) => (
+                <tr key={i}><td>{r.username}</td><td>{r.score}/{r.total}</td><td>{r.created_at}</td></tr>
+              ))}
+            </tbody></table>
+          )}
+        </div>
+      )}
+
+      {current && (
+        <div className="card" style={{ marginTop: 14 }}>
+          <h3>{current.title}</h3>
+          {current.questions.map((q, qi) => (
+            <div key={qi} style={{ marginBottom: 12 }}>
+              <p>{qi + 1}. {q.text}</p>
+              {q.choices.map((c, ci) => (
+                <label key={ci} style={{ display: "block", marginInlineStart: 12 }}>
+                  <input type="radio" name={`q${qi}`} checked={answers[qi] === ci} disabled={!!result}
+                    onChange={() => setAnswers(answers.map((a, j) => (j === qi ? ci : a)))} /> {c}
+                  {result && result.correct[qi] === ci && <span className="ok"> ✔</span>}
+                </label>
+              ))}
+            </div>
+          ))}
+          {!result && <button onClick={submit}>{L.submit}</button>}
+          {result && <p className="ok">{L.score}: {result.score}/{result.total}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssistantPanel({ lang }) {
+  const isAr = lang === "ar";
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function ask() {
+    setErr(""); setAnswer(""); setBusy(true);
+    try {
+      const r = await api("/api/v1/assistant/ask", { question });
+      setAnswer(r.answer);
+    } catch (e) {
+      setErr(e.message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card">
+      <p className="muted">{isAr
+        ? "اسأل عن آليات التفاعلات، أو خصائص الأدوية، أو الحسابات الصيدلانية. المساعد للتعليم فقط، وما بيعطيش نصايح طبية."
+        : "Ask about reaction mechanisms, drug properties or pharmaceutical calculations. For education only, not medical advice."}</p>
+      <textarea rows={4} value={question} onChange={(e) => setQuestion(e.target.value)}
+        style={{ width: "100%", background: "#0d1117", color: "#e6edf3", border: "1px solid #2d3748", borderRadius: 6, padding: 8, fontFamily: "inherit" }} />
+      <div className="row" style={{ marginTop: 8 }}>
+        <button onClick={ask} disabled={busy || question.trim().length < 2}>{busy ? "..." : (isAr ? "اسأل" : "Ask")}</button>
+      </div>
+      <ErrorBox msg={err} />
+      {answer && <pre>{answer}</pre>}
+    </div>
+  );
+}
+
+function App() {
+  const [lang, setLang] = useState("ar");
+  const [user, setUser] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  }, [lang]);
+
+  useEffect(() => {
+    if (!localStorage.getItem("ps_token")) { setChecking(false); return; }
+    api("/api/v1/auth/me")
+      .then(setUser)
+      .catch(() => localStorage.removeItem("ps_token"))
+      .finally(() => setChecking(false));
+  }, []);
+
+  function logout() {
+    api("/api/v1/auth/logout", null, "DELETE").catch(() => {});
+    localStorage.removeItem("ps_token");
+    setUser(null);
+  }
+
+  const toggle = (
+    <div style={{ textAlign: "end", padding: 10 }}>
+      <button className="ghost" onClick={() => setLang(lang === "ar" ? "en" : "ar")}>
+        {lang === "ar" ? "English" : "العربية"}
+      </button>
+    </div>
+  );
+
+  if (checking) return <div>{toggle}</div>;
+  if (!user) return (<div>{toggle}<AuthPanel lang={lang} onAuth={setUser} /></div>);
+  return <MainApp user={user} onLogout={logout} lang={lang} setLang={setLang} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
